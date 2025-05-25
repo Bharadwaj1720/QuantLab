@@ -1,21 +1,44 @@
 import streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
 from data.fetch_bonds import list_us_treasury_tenors, fetch_us_treasury_yields
 from data.fetch_stocks import fetch_stock_data
-from models.yield_curve import plot_yield_curve_on_date
+from models.yield_curve import plot_yield_curve_on_date, bootstrap_yield_curve, sort_columns_by_maturity
 from models.stock_predictor import predict_stock_lstm
-from models.hull_white import HullWhiteModel
+from models.hull_white import HullWhiteModel, price_zero_coupon_bond
+
+# Dashboard Entry Point
+
+import pandas as pd
+from data.fetch_bonds import list_us_treasury_tenors, fetch_us_treasury_yields
+from data.fetch_stocks import fetch_stock_data
+from models.yield_curve import plot_yield_curve_on_date, bootstrap_yield_curve, sort_columns_by_maturity
+from models.stock_predictor import predict_stock_lstm
+from models.hull_white import HullWhiteModel, price_zero_coupon_bond
 
 def run_dashboard():
-    st.sidebar.title("QuantLab Pro")
-    module = st.sidebar.radio("Select Module", ["US Treasuries", "Stock Analysis"])
+    st.sidebar.title("QuantLab")
+    module = st.sidebar.radio("Select Module", ["Home", "US Treasuries", "Stock Analysis"])
 
-    if module == "US Treasuries":
+    if module == "Home":
+        st.title("Welcome to QuantLab")
+        st.markdown("""
+        ### Features:
+        - **US Treasuries:** Load and visualize historical US Treasury yields, construct yield curves, and price zero-coupon bonds using the Hull-White model.
+        - **Stock Analysis:** Load market data for any stock, apply LSTM for future price prediction, and visualize historical trends.
+        - **Upload CSV:** Upload your own bond or stock datasets for visualization.
+        - **Risk-Neutral Valuation:** Bond pricing using Hull-White interest rate model.
+        - **Yield Curve Construction:** Spot rate bootstrapping from par yields.
+        """)
+
+    elif module == "US Treasuries":
         start = st.sidebar.date_input("From Date", pd.to_datetime("2000-01-01"))
         end = st.sidebar.date_input("To Date", pd.to_datetime("today"))
         if st.sidebar.button("Load Yields"):
             df = fetch_us_treasury_yields(start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"))
+            df = df[sort_columns_by_maturity(df.columns)]
             st.session_state['yield_df'] = df
+
         if 'yield_df' in st.session_state:
             df = st.session_state['yield_df']
             st.subheader("US Treasury Yield Time Series")
@@ -27,7 +50,31 @@ def run_dashboard():
                 value=df.index.max().date(),
                 format="YYYY-MM-DD"
             )
-            plot_yield_curve_on_date(df, pd.to_datetime(date))
+
+            st.subheader("Yield Curve Construction")
+            selected_date = pd.to_datetime(date)
+            available = df.index[df.index <= selected_date]
+            if available.empty:
+                st.error(f"No yield data available on or before {selected_date.date()}")
+                return
+            spot_rates = bootstrap_yield_curve(df.loc[available.max()])
+            # Plot spot curve with correct numeric ordering
+            fig, ax = plt.subplots()
+            maturities = [float(t[:-1]) if t.endswith('Y') else float(t[:-1])/12 for t in spot_rates.index]
+            rates = spot_rates.values
+            ax.plot(maturities, rates, marker='o')
+            ax.set_xticks(maturities)
+            ax.set_xticklabels(spot_rates.index)
+            ax.set_xlabel('Maturity (Years)')
+            ax.set_ylabel('Spot Rate')
+            ax.set_title(f"Spot Rate Curve on {available.max().date()}")
+            st.pyplot(fig)
+
+            st.subheader("Zero-Coupon Bond Pricing (Hull-White)")
+            r0 = df.loc[available.max()].iloc[-1] / 100
+            maturity = st.slider("Maturity (Years)", 1, 30, 10)
+            price = price_zero_coupon_bond(r0, maturity)
+            st.write(f"Bond Price (T={maturity}): {price:.4f}")
 
     else:
         ticker = st.sidebar.text_input("Ticker (e.g., AAPL)").upper()
@@ -63,6 +110,23 @@ def run_dashboard():
             HullWhiteModel().run()
 
     st.sidebar.caption("Built with Streamlit • QuantLab")
+
+    # Optional upload for user-provided data
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Upload Custom Data")
+
+    uploaded_bond = st.sidebar.file_uploader("Upload Bond Data (CSV)", type="csv", key="user_bond")
+    if uploaded_bond:
+        user_df = pd.read_csv(uploaded_bond, index_col=0, parse_dates=True)
+        st.subheader("Custom Bond Data")
+        st.dataframe(user_df)
+        st.line_chart(user_df)
+
+    uploaded_stock = st.sidebar.file_uploader("Upload Stock Data (CSV)", type="csv", key="user_stock")
+    if uploaded_stock:
+        user_df = pd.read_csv(uploaded_stock, index_col=0, parse_dates=True)
+        st.subheader("Custom Stock Data")
+        st.line_chart(user_df)
 
 if __name__ == "__main__":
     run_dashboard()
