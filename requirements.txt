@@ -3,7 +3,7 @@ pandas
 numpy
 matplotlib
 scikit-learn
-tensorflow
 yfinance
-polygon
+polygon-api-client
+tensorflow==2.12.1
 pandas_datareader
