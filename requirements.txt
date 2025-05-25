@@ -5,4 +5,5 @@ matplotlib
 scikit-learn
 tensorflow
 yfinance
-polygon-api-client
+polygon
+pandas_datareader
