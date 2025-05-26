@@ -106,8 +106,7 @@ def run_dashboard():
             except Exception as e:
                 st.error(f"Forecasting failed: {e}")
 
-            st.subheader("Hull-White Simulation on Last Rate")
-            HullWhiteModel().run()
+            
 
     st.sidebar.caption("Built with Streamlit • QuantLab")
 
