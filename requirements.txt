@@ -6,4 +6,4 @@ scikit-learn
 tensorflow==2.15.0
 yfinance
 pandas_datareader
-polygon
+polygon-api-client
